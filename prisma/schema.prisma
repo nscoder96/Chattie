@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Contact represents a customer (from WhatsApp or Email)
+model Contact {
+  id        String   @id @default(cuid())
+  phone     String?  @unique // WhatsApp phone number
+  email     String?  // Email address (collected via chat)
+  name      String?
+
+  // Collected info for quotes
+  gardenSize    String?  // Tuinafmetingen
+  gardenPhotos  String?  // JSON array of photo URLs/IDs
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations Conversation[]
+  messages      Message[]
+}
+
+// Conversation groups messages by session/topic
+model Conversation {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id])
+
+  channel   String   @default("WHATSAPP") // 'WHATSAPP' or 'EMAIL'
+  status    String   @default("ACTIVE")   // 'ACTIVE', 'COMPLETED', 'ARCHIVED'
+
+  // For email threads
+  emailThreadId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  Message[]
+  pendingResponses PendingResponse[]
+}
+
+// Individual messages
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id])
+
+  direction      String // 'INBOUND' or 'OUTBOUND'
+  content        String
+
+  // WhatsApp specific
+  whatsappMessageId String?
+
+  // Email specific
+  emailMessageId    String?
+
+  createdAt DateTime @default(now())
+}
+
+// Responses waiting for approval
+model PendingResponse {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  originalMessage   String  // The customer's message
+  suggestedResponse String  // AI-generated response
+
+  // Email sent to business owner for approval
+  approvalEmailId   String?
+
+  status         String   @default("PENDING") // 'PENDING', 'APPROVED', 'MODIFIED', 'REJECTED'
+
+  createdAt DateTime @default(now())
+  respondedAt DateTime?
+}
+
+// Business configuration - one record per deployment
+model BusinessConfig {
+  id        String   @id @default(cuid())
+
+  // Basic business info
+  businessName        String
+  businessDescription String?   // What the business does
+  websiteUrl          String?
+
+  // Scraped website content (cached)
+  scrapedContent      String?   // JSON with structured website data
+  scrapedAt           DateTime?
+
+  // Contact info
+  ownerName           String?
+  ownerEmail          String    // Where approval emails go
+  ownerPhone          String?
+
+  // AI Instructions
+  customInstructions  String?   // Custom instructions for the AI
+  tone                String?   // e.g., "friendly", "professional", "casual"
+  language            String    @default("nl") // nl, en, etc.
+
+  // What info to collect from customers
+  collectFields       String    @default("[\"name\",\"email\",\"phone\"]") // JSON array
+
+  // Auto-reply settings
+  responseMode        String    @default("approval") // 'approval' or 'auto'
+
+  // Greeting & closing
+  greetingMessage     String?   // Optional custom first message
+  closingMessage      String?   // Message when all info is collected
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
