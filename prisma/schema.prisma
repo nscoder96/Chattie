@@ -106,7 +106,7 @@ model BusinessConfig {
   language            String    @default("nl") // nl, en, etc.
 
   // What info to collect from customers
-  collectFields       String    @default("[\"name\",\"email\",\"phone\"]") // JSON array
+  collectFields       String    @default("[\"name\",\"email\",\"phone\",\"gardenSize\",\"photos\"]") // JSON array
 
   // Auto-reply settings
   responseMode        String    @default("approval") // 'approval' or 'auto'
