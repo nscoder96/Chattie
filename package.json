@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "AI-powered chatbot for WhatsApp Business and Gmail integration",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
