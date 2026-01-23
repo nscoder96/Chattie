@@ -71,6 +71,12 @@ async function handleIncomingMessage(message: TwilioWhatsAppMessage) {
   const messageContent = hasMedia && !content ? '[Foto ontvangen]' : content;
   await saveMessage(conversation.id, contact.id, 'INBOUND', messageContent, message.MessageSid);
 
+  // If conversation is paused (owner took over), don't respond with AI
+  if (conversation.status === 'PAUSED') {
+    console.log(`Conversation paused for ${phone} - skipping AI response`);
+    return;
+  }
+
   // Build conversation context for AI
   const context: ConversationContext = {
     contactPhone: contact.phone || undefined,

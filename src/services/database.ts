@@ -11,12 +11,12 @@ export async function findOrCreateContact(phone: string, name?: string) {
 }
 
 export async function getOrCreateConversation(contactId: string, channel: 'WHATSAPP' | 'EMAIL') {
-  // Find active conversation or create new one
+  // Find active or paused conversation, or create new one
   const existing = await prisma.conversation.findFirst({
     where: {
       contactId,
       channel,
-      status: 'ACTIVE',
+      status: { in: ['ACTIVE', 'PAUSED'] },
     },
     include: {
       messages: {

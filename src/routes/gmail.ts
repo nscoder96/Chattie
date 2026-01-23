@@ -163,6 +163,57 @@ function extractReplyContent(emailBody: string): string {
   return content.trim();
 }
 
+// Check for conversations that need follow-up drafts
+export async function checkForFollowUps() {
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      needsFollowUp: true,
+      nextFollowUpAt: { lte: new Date() },
+    },
+    include: { contact: true },
+  });
+
+  for (const conv of conversations) {
+    const contact = conv.contact;
+    const contactEmail = contact.email;
+
+    if (!contactEmail) {
+      console.log(`Skipping follow-up for ${contact.name || contact.phone} - no email`);
+      continue;
+    }
+
+    const contactName = contact.name || 'klant';
+    let subject: string;
+    let body: string;
+
+    if (conv.followUpCount === 1) {
+      // First follow-up
+      subject = `Opvolging - Uw aanvraag`;
+      body = `Beste ${contactName},\n\nIk heb geprobeerd u telefonisch te bereiken, maar helaas kon ik u niet te pakken krijgen.\n\nHeeft u nog interesse in onze diensten? Ik help u graag verder. U kunt mij bereiken op dit e-mailadres of telefonisch.\n\nMet vriendelijke groet`;
+    } else if (conv.followUpCount === 2) {
+      // Second follow-up
+      subject = `Nogmaals: Uw aanvraag`;
+      body = `Beste ${contactName},\n\nIk heb opnieuw geprobeerd contact met u op te nemen, maar helaas zonder succes.\n\nMocht u nog steeds interesse hebben, dan hoor ik het graag. Ik sta voor u klaar.\n\nMet vriendelijke groet`;
+    } else {
+      // Third and final follow-up
+      subject = `Laatste bericht: Uw aanvraag`;
+      body = `Beste ${contactName},\n\nIk heb meerdere keren geprobeerd contact met u op te nemen, helaas zonder succes.\n\nIk sluit uw aanvraag voor nu af. Mocht u in de toekomst alsnog interesse hebben, dan bent u uiteraard van harte welkom om opnieuw contact met ons op te nemen.\n\nMet vriendelijke groet`;
+    }
+
+    // Create draft
+    await createDraft(contactEmail, subject, body);
+    console.log(`Created follow-up draft ${conv.followUpCount}/3 for ${contactName} (${contactEmail})`);
+
+    // Update conversation
+    if (conv.followUpCount >= 3) {
+      await prisma.conversation.update({
+        where: { id: conv.id },
+        data: { needsFollowUp: false, status: 'COMPLETED' },
+      });
+    }
+  }
+}
+
 // Polling interval runner
 let pollingInterval: NodeJS.Timeout | null = null;
 
@@ -172,12 +223,14 @@ export function startEmailPolling(intervalMs: number = 60000) {
   // Run immediately
   checkForNewEmails().catch(console.error);
   checkForApprovalReplies().catch(console.error);
+  checkForFollowUps().catch(console.error);
 
   // Then run on interval
   pollingInterval = setInterval(async () => {
     try {
       await checkForNewEmails();
       await checkForApprovalReplies();
+      await checkForFollowUps();
     } catch (error) {
       console.error('Error in email polling:', error);
     }

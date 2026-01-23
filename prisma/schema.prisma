@@ -32,10 +32,16 @@ model Conversation {
   contact   Contact  @relation(fields: [contactId], references: [id])
 
   channel   String   @default("WHATSAPP") // 'WHATSAPP' or 'EMAIL'
-  status    String   @default("ACTIVE")   // 'ACTIVE', 'COMPLETED', 'ARCHIVED'
+  status    String   @default("ACTIVE")   // 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'
 
   // For email threads
   emailThreadId String?
+
+  // Follow-up tracking
+  followUpCount   Int       @default(0)    // Number of follow-up attempts (max 3)
+  lastFollowUpAt  DateTime? // When the last follow-up was sent
+  nextFollowUpAt  DateTime? // When to send the next follow-up
+  needsFollowUp   Boolean   @default(false) // Flag: owner tried to call but no answer
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

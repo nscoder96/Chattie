@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../services/database.js';
+import { sendWhatsAppMessage } from '../services/whatsapp.js';
+import { saveMessage } from '../services/database.js';
 import { scrapeWebsite, updateBusinessWithScrapedData, getBusinessConfig } from '../services/scraper.js';
 
 export const adminRouter = Router();
@@ -188,5 +190,111 @@ adminRouter.get('/stats', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting stats:', error);
     res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+// Send a manual WhatsApp message
+adminRouter.post('/send', async (req: Request, res: Response) => {
+  try {
+    const { phone, message } = req.body;
+
+    if (!phone || !message) {
+      res.status(400).json({ error: 'phone and message are required' });
+      return;
+    }
+
+    // Send the message
+    const sid = await sendWhatsAppMessage(phone, message);
+
+    // Save to database if contact exists
+    const contact = await prisma.contact.findUnique({ where: { phone } });
+    if (contact) {
+      const conversation = await prisma.conversation.findFirst({
+        where: { contactId: contact.id, channel: 'WHATSAPP', status: { in: ['ACTIVE', 'PAUSED'] } },
+      });
+      if (conversation) {
+        await saveMessage(conversation.id, contact.id, 'OUTBOUND', message);
+      }
+    }
+
+    res.json({ success: true, sid });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Pause bot for a conversation (owner takes over)
+adminRouter.post('/conversations/:id/pause', async (req: Request, res: Response) => {
+  try {
+    const conversation = await prisma.conversation.update({
+      where: { id: req.params.id },
+      data: { status: 'PAUSED' },
+      include: { contact: true },
+    });
+
+    res.json({ success: true, message: `Bot gepauzeerd voor ${conversation.contact.name || conversation.contact.phone}`, conversation });
+  } catch (error) {
+    console.error('Error pausing conversation:', error);
+    res.status(500).json({ error: 'Failed to pause conversation' });
+  }
+});
+
+// Mark conversation for follow-up (owner tried calling, no answer)
+adminRouter.post('/conversations/:id/follow-up', async (req: Request, res: Response) => {
+  try {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: req.params.id },
+      include: { contact: true },
+    });
+
+    if (!conversation) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+
+    const newCount = conversation.followUpCount + 1;
+    // Schedule next follow-up in 2 days, or mark complete after 3
+    const nextFollowUp = newCount < 3 ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null;
+
+    const updated = await prisma.conversation.update({
+      where: { id: req.params.id },
+      data: {
+        followUpCount: newCount,
+        lastFollowUpAt: new Date(),
+        nextFollowUpAt: nextFollowUp,
+        needsFollowUp: newCount < 3,
+        status: newCount >= 3 ? 'COMPLETED' : conversation.status,
+      },
+      include: { contact: true },
+    });
+
+    res.json({
+      success: true,
+      followUpCount: newCount,
+      message: newCount >= 3
+        ? `Laatste follow-up (${newCount}/3). Gesprek afgesloten.`
+        : `Follow-up ${newCount}/3 gemarkeerd. Volgende follow-up over 2 dagen.`,
+      conversation: updated,
+    });
+  } catch (error) {
+    console.error('Error marking follow-up:', error);
+    res.status(500).json({ error: 'Failed to mark follow-up' });
+  }
+});
+
+// Resume bot for a conversation
+adminRouter.post('/conversations/:id/resume', async (req: Request, res: Response) => {
+  try {
+    const conversation = await prisma.conversation.update({
+      where: { id: req.params.id },
+      data: { status: 'ACTIVE' },
+      include: { contact: true },
+    });
+
+    res.json({ success: true, message: `Bot hervat voor ${conversation.contact.name || conversation.contact.phone}`, conversation });
+  } catch (error) {
+    console.error('Error resuming conversation:', error);
+    res.status(500).json({ error: 'Failed to resume conversation' });
   }
 });
