@@ -4,10 +4,15 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().min(1),
 
-  // Twilio (WhatsApp)
-  TWILIO_ACCOUNT_SID: z.string().min(1),
-  TWILIO_AUTH_TOKEN: z.string().min(1),
-  TWILIO_WHATSAPP_NUMBER: z.string().min(1),
+  // Twilio (WhatsApp) - optional, use Unipile instead
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_WHATSAPP_NUMBER: z.string().optional(),
+
+  // Unipile (WhatsApp) - preferred
+  UNIPILE_API_KEY: z.string().optional(),
+  UNIPILE_DSN: z.string().optional(), // e.g., "api1.unipile.com"
+  UNIPILE_ACCOUNT_ID: z.string().optional(), // WhatsApp account ID
 
   // Gmail API (optional for now)
   GMAIL_CLIENT_ID: z.string().optional(),
@@ -17,6 +22,9 @@ const envSchema = z.object({
 
   // Business owner
   BUSINESS_OWNER_EMAIL: z.string().email(),
+
+  // Apify (optional - falls back to Cheerio scraper)
+  APIFY_API_TOKEN: z.string().optional(),
 
   // Database
   DATABASE_URL: z.string().min(1),

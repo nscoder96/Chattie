@@ -1,13 +1,25 @@
 import twilio from 'twilio';
 import { config } from '../config/index.js';
 
-const client = twilio(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN);
+// Only create Twilio client if credentials are configured
+const client = config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN
+  ? twilio(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+  : null;
+
+function getTwilioClient() {
+  if (!client) {
+    throw new Error('Twilio is not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN, or use Unipile instead.');
+  }
+  return client;
+}
 
 export async function sendWhatsAppMessage(to: string, message: string): Promise<string> {
+  const twilioClient = getTwilioClient();
+
   // Ensure the 'to' number has whatsapp: prefix
   const toNumber = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
 
-  const result = await client.messages.create({
+  const result = await twilioClient.messages.create({
     body: message,
     from: config.TWILIO_WHATSAPP_NUMBER,
     to: toNumber,
@@ -18,9 +30,10 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
 }
 
 export async function sendWhatsAppMedia(to: string, mediaUrl: string, caption?: string): Promise<string> {
+  const twilioClient = getTwilioClient();
   const toNumber = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
 
-  const result = await client.messages.create({
+  const result = await twilioClient.messages.create({
     body: caption || '',
     from: config.TWILIO_WHATSAPP_NUMBER,
     to: toNumber,
@@ -36,6 +49,9 @@ export function validateTwilioSignature(
   url: string,
   params: Record<string, string>
 ): boolean {
+  if (!config.TWILIO_AUTH_TOKEN) {
+    return false;
+  }
   return twilio.validateRequest(
     config.TWILIO_AUTH_TOKEN,
     signature,
