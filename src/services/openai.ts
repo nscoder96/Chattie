@@ -219,18 +219,41 @@ export async function classifyEmail(
     messages: [
       {
         role: 'system',
-        content: `Classificeer de volgende e-mail in één van deze categorieën:
-- CUSTOMER: Een (potentiële) klant die vraagt over diensten, offertes, of afspraken
-- SUPPLIER: Een leverancier, zakelijke partner, of B2B communicatie
-- SPAM: Reclame, phishing, ongewenste berichten
-- INTERNAL: Interne communicatie, systeem notificaties
-- OTHER: Alles wat niet in bovenstaande categorieën past
+        content: `Je classificeert e-mails voor een hoveniersbedrijf. Categorieën:
 
-Geef je antwoord als JSON met: classification, confidence (0-1), reason (kort).`,
+**CUSTOMER** - Echte klanten/leads:
+- Vraagt over tuindiensten (aanleg, onderhoud, renovatie, bestrating, beplanting)
+- Wil een offerte, prijsindicatie, of afspraak
+- Beschrijft een tuinprobleem of -wens
+- Particulier of bedrijf dat tuinwerk nodig heeft
+- Reactie op eerdere offerte of contact
+
+**SUPPLIER** - Zakelijk/leverancier:
+- Verkoopt producten of diensten AAN het bedrijf
+- B2B samenwerkingsverzoek
+- Facturen, bestellingen van leveranciers
+
+**SPAM** - Ongewenst:
+- Cold outreach, sales pitches voor software/marketing/leads
+- Nieuwsbrieven waar niet om gevraagd is
+- Phishing, scam berichten
+- "Let's schedule a call" zonder context
+- Warmup emails, tracking codes in subject
+
+**INTERNAL** - Systeem/intern:
+- Notificaties van software (Google, hosting, etc.)
+- Interne bedrijfscommunicatie
+
+**OTHER** - Rest:
+- Onduidelijk, niet te classificeren
+
+Bij twijfel tussen CUSTOMER en SPAM: kijk of de afzender een SPECIFIEK tuinproject beschrijft. Generieke "ik zoek een hovenier" zonder details = eerder CUSTOMER. "Ik kan je helpen met leads/marketing" = SPAM.
+
+Antwoord als JSON: {"classification": "...", "confidence": 0.0-1.0, "reason": "..."}`,
       },
       {
         role: 'user',
-        content: `Van: ${from}\nOnderwerp: ${subject}\n\n${body.slice(0, 500)}`,
+        content: `Van: ${from}\nOnderwerp: ${subject}\n\n${body.slice(0, 1000)}`,
       },
     ],
     response_format: { type: 'json_object' },
