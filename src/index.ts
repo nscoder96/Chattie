@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import path from 'path';
 import { config } from './config/index.js';
 import { whatsappRouter } from './routes/whatsapp.js';
 import { gmailRouter, startEmailPolling } from './routes/gmail.js';
@@ -23,6 +24,15 @@ app.get('/health', (_req, res) => {
     mode: config.RESPONSE_MODE,
     timestamp: new Date().toISOString(),
   });
+});
+
+// Serve React dashboard (static files)
+const clientDistPath = path.resolve(process.cwd(), 'dist', 'client');
+app.use(express.static(clientDistPath));
+
+// SPA fallback: serve index.html for all non-API routes
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 // Start server

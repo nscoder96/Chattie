@@ -293,20 +293,29 @@ adminRouter.post('/pending/:id/reject', async (req: Request, res: Response) => {
 // Dashboard stats
 adminRouter.get('/stats', async (_req: Request, res: Response) => {
   try {
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+
     const [
       totalContacts,
       totalConversations,
       pendingResponses,
       todayMessages,
+      recentMessages,
     ] = await Promise.all([
       prisma.contact.count(),
       prisma.conversation.count(),
       prisma.pendingResponse.count({ where: { status: 'PENDING' } }),
       prisma.message.count({
-        where: {
-          createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
-          },
+        where: { createdAt: { gte: todayStart } },
+      }),
+      // Get recent messages for dashboard feed
+      prisma.message.findMany({
+        where: { createdAt: { gte: todayStart } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          contact: { select: { name: true, phone: true, email: true } },
+          conversation: { select: { id: true, channel: true } },
         },
       }),
     ]);
@@ -316,6 +325,7 @@ adminRouter.get('/stats', async (_req: Request, res: Response) => {
       totalConversations,
       pendingResponses,
       todayMessages,
+      recentMessages,
     });
   } catch (error) {
     console.error('Error getting stats:', error);

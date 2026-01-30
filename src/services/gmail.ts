@@ -34,8 +34,38 @@ export async function getUnreadEmails(): Promise<EmailMessage[]> {
 
   for (const msg of response.data.messages || []) {
     if (msg.id) {
-      const email = await getEmailById(msg.id);
-      if (email) messages.push(email);
+      try {
+        const email = await getEmailById(msg.id);
+        if (email) messages.push(email);
+      } catch (error) {
+        console.error(`Error fetching email ${msg.id}:`, error);
+      }
+    }
+  }
+
+  return messages;
+}
+
+// Get emails that haven't been processed by Chattie yet
+// Checks if the email already has a classification label (Klant, Spam, etc.)
+// so emails opened manually in Gmail are still processed
+export async function getUnprocessedEmails(): Promise<EmailMessage[]> {
+  const response = await gmail.users.messages.list({
+    userId: 'me',
+    q: `in:inbox -label:Klant -label:Ongewenst -label:Leverancier -label:Intern -label:Overig newer_than:3d`,
+    maxResults: 10,
+  });
+
+  const messages: EmailMessage[] = [];
+
+  for (const msg of response.data.messages || []) {
+    if (msg.id) {
+      try {
+        const email = await getEmailById(msg.id);
+        if (email) messages.push(email);
+      } catch (error) {
+        console.error(`Error fetching email ${msg.id}:`, error);
+      }
     }
   }
 
@@ -179,6 +209,94 @@ export async function markAsRead(messageId: string): Promise<void> {
       removeLabelIds: ['UNREAD'],
     },
   });
+}
+
+// Label management for email classification
+const labelCache = new Map<string, string>(); // name -> id
+
+export async function getOrCreateLabel(labelName: string): Promise<string> {
+  // Check cache first
+  if (labelCache.has(labelName)) {
+    return labelCache.get(labelName)!;
+  }
+
+  // List existing labels
+  const response = await gmail.users.labels.list({ userId: 'me' });
+  const existing = response.data.labels?.find(l => l.name === labelName);
+  if (existing?.id) {
+    labelCache.set(labelName, existing.id);
+    return existing.id;
+  }
+
+  // Create label
+  const created = await gmail.users.labels.create({
+    userId: 'me',
+    requestBody: {
+      name: labelName,
+      labelListVisibility: 'labelShow',
+      messageListVisibility: 'show',
+    },
+  });
+
+  const labelId = created.data.id || '';
+  labelCache.set(labelName, labelId);
+  return labelId;
+}
+
+const LABEL_NAMES: Record<string, string> = {
+  CUSTOMER: 'Klant',
+  SUPPLIER: 'Leverancier',
+  SPAM: 'Ongewenst',
+  INTERNAL: 'Intern',
+  OTHER: 'Overig',
+};
+
+// All classification label names (used to detect already-processed emails)
+const ALL_CLASSIFICATION_LABELS = Object.values(LABEL_NAMES);
+
+export async function addLabel(messageId: string, classification: string): Promise<void> {
+  const labelName = LABEL_NAMES[classification] || classification;
+  try {
+    const labelId = await getOrCreateLabel(labelName);
+    await gmail.users.messages.modify({
+      userId: 'me',
+      id: messageId,
+      requestBody: {
+        addLabelIds: [labelId],
+      },
+    });
+  } catch (error) {
+    console.error(`Failed to add label ${labelName} to message ${messageId}:`, error);
+  }
+}
+
+// Check if a message already has one of our classification labels
+export async function hasClassificationLabel(messageId: string): Promise<boolean> {
+  // Build a set of label IDs for our classification labels
+  const classificationLabelIds: string[] = [];
+  for (const name of ALL_CLASSIFICATION_LABELS) {
+    if (labelCache.has(name)) {
+      classificationLabelIds.push(labelCache.get(name)!);
+    } else {
+      // Try to find without creating
+      try {
+        const response = await gmail.users.labels.list({ userId: 'me' });
+        const existing = response.data.labels?.find(l => l.name === name);
+        if (existing?.id) {
+          labelCache.set(name, existing.id);
+          classificationLabelIds.push(existing.id);
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  const detail = await gmail.users.messages.get({
+    userId: 'me',
+    id: messageId,
+    format: 'minimal',
+  });
+  const labels = detail.data.labelIds || [];
+  return labels.some(id => classificationLabelIds.includes(id));
 }
 
 export async function getThreadReplies(threadId: string): Promise<EmailMessage[]> {
