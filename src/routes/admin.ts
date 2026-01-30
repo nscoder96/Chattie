@@ -93,6 +93,35 @@ adminRouter.post('/scrape', async (req: Request, res: Response) => {
   }
 });
 
+// Update scraped/categorized content (manual edits)
+adminRouter.put('/scraped-content', async (req: Request, res: Response) => {
+  try {
+    const config = await getBusinessConfig();
+    if (!config.scrapedContent) {
+      res.status(400).json({ error: 'No scraped content to update. Scrape a website first.' });
+      return;
+    }
+
+    const existing = JSON.parse(config.scrapedContent);
+    const { categorized, description, services, about } = req.body;
+
+    if (categorized) existing.categorized = categorized;
+    if (description !== undefined) existing.description = description;
+    if (services !== undefined) existing.services = services;
+    if (about !== undefined) existing.about = about;
+
+    await prisma.businessConfig.update({
+      where: { id: config.id },
+      data: { scrapedContent: JSON.stringify(existing) },
+    });
+
+    res.json({ success: true, data: existing });
+  } catch (error) {
+    console.error('Error updating scraped content:', error);
+    res.status(500).json({ error: 'Failed to update scraped content' });
+  }
+});
+
 // Get all contacts
 adminRouter.get('/contacts', async (_req: Request, res: Response) => {
   try {
@@ -110,6 +139,42 @@ adminRouter.get('/contacts', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting contacts:', error);
     res.status(500).json({ error: 'Failed to get contacts' });
+  }
+});
+
+// List conversations (MUST be before :id route)
+adminRouter.get('/conversations', async (req: Request, res: Response) => {
+  try {
+    const { status, channel } = req.query;
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status as string;
+    if (channel) where.channel = channel as string;
+
+    const conversations = await prisma.conversation.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        contact: true,
+        _count: { select: { messages: true } },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    const result = conversations.map(conv => ({
+      ...conv,
+      messageCount: conv._count.messages,
+      lastMessage: conv.messages[0] || null,
+      messages: undefined,
+      _count: undefined,
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error listing conversations:', error);
+    res.status(500).json({ error: 'Failed to list conversations' });
   }
 });
 
@@ -157,6 +222,71 @@ adminRouter.get('/pending', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting pending responses:', error);
     res.status(500).json({ error: 'Failed to get pending responses' });
+  }
+});
+
+// Approve a pending response
+adminRouter.post('/pending/:id/approve', async (req: Request, res: Response) => {
+  try {
+    const { modifiedMessage } = req.body;
+    const pending = await prisma.pendingResponse.findUnique({
+      where: { id: req.params.id },
+      include: {
+        conversation: {
+          include: { contact: true },
+        },
+      },
+    });
+
+    if (!pending) {
+      res.status(404).json({ error: 'Pending response not found' });
+      return;
+    }
+
+    const messageToSend = modifiedMessage || pending.suggestedResponse;
+    const contact = pending.conversation.contact;
+
+    // Send via appropriate channel
+    if (pending.conversation.channel === 'WHATSAPP' && contact.phone) {
+      await sendWhatsAppMessage(contact.phone, messageToSend);
+    }
+
+    await saveMessage(pending.conversationId, contact.id, 'OUTBOUND', messageToSend);
+
+    const status = modifiedMessage ? 'MODIFIED' : 'APPROVED';
+    await prisma.pendingResponse.update({
+      where: { id: req.params.id },
+      data: { status, respondedAt: new Date() },
+    });
+
+    res.json({ success: true, status, messageSent: messageToSend });
+  } catch (error) {
+    console.error('Error approving response:', error);
+    res.status(500).json({ error: 'Failed to approve response' });
+  }
+});
+
+// Reject a pending response
+adminRouter.post('/pending/:id/reject', async (req: Request, res: Response) => {
+  try {
+    const pending = await prisma.pendingResponse.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!pending) {
+      res.status(404).json({ error: 'Pending response not found' });
+      return;
+    }
+
+    await prisma.pendingResponse.update({
+      where: { id: req.params.id },
+      data: { status: 'REJECTED', respondedAt: new Date() },
+    });
+
+    res.json({ success: true, status: 'REJECTED' });
+  } catch (error) {
+    console.error('Error rejecting response:', error);
+    res.status(500).json({ error: 'Failed to reject response' });
   }
 });
 
@@ -296,5 +426,46 @@ adminRouter.post('/conversations/:id/resume', async (req: Request, res: Response
   } catch (error) {
     console.error('Error resuming conversation:', error);
     res.status(500).json({ error: 'Failed to resume conversation' });
+  }
+});
+
+// Reset a contact's conversation (delete all messages, start fresh)
+adminRouter.post('/contacts/:phone/reset', async (req: Request, res: Response) => {
+  try {
+    // Normalize phone number (add + if missing)
+    let phone = req.params.phone;
+    if (!phone.startsWith('+')) {
+      phone = '+31' + phone.replace(/^0/, '');
+    }
+
+    const contact = await prisma.contact.findUnique({ where: { phone } });
+    if (!contact) {
+      res.status(404).json({ error: 'Contact niet gevonden' });
+      return;
+    }
+
+    // Delete all messages and conversations for this contact
+    await prisma.message.deleteMany({ where: { contactId: contact.id } });
+    await prisma.pendingResponse.deleteMany({
+      where: { conversation: { contactId: contact.id } },
+    });
+    await prisma.conversation.deleteMany({ where: { contactId: contact.id } });
+
+    // Reset contact fields
+    await prisma.contact.update({
+      where: { id: contact.id },
+      data: {
+        name: null,
+        email: null,
+        gardenSize: null,
+        gardenPhotos: null,
+        address: null,
+      },
+    });
+
+    res.json({ success: true, message: `Gesprek gereset voor ${phone}` });
+  } catch (error) {
+    console.error('Error resetting contact:', error);
+    res.status(500).json({ error: 'Failed to reset contact' });
   }
 });
