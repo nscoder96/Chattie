@@ -464,7 +464,6 @@ adminRouter.post('/reset-contact', async (req: Request, res: Response) => {
         email: null,
         gardenSize: null,
         gardenPhotos: null,
-        address: null,
       },
     });
 
