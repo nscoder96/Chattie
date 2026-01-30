@@ -2,11 +2,13 @@ import { Router, Request, Response } from 'express';
 import { config } from '../config/index.js';
 import {
   getUnreadEmails,
+  getUnprocessedEmails,
   markAsRead,
   createDraft,
   getThreadReplies,
+  addLabel,
 } from '../services/gmail.js';
-import { generateEmailDraft } from '../services/openai.js';
+import { generateEmailDraft, classifyEmail } from '../services/openai.js';
 import { sendWhatsAppMessage } from '../services/whatsapp.js';
 import {
   findPendingResponseByEmailId,
@@ -33,38 +35,65 @@ gmailRouter.post('/check', async (_req: Request, res: Response) => {
 export async function checkForNewEmails() {
   console.log('Checking for new customer emails...');
 
-  const emails = await getUnreadEmails();
+  // Use label-based tracking instead of unread status
+  // This prevents missing emails that the user already opened in Gmail
+  const emails = await getUnprocessedEmails();
+
+  if (emails.length > 0) {
+    console.log(`Found ${emails.length} unprocessed email(s)`);
+  }
 
   for (const email of emails) {
-    // Skip emails from the business owner (these are approvals)
-    if (email.from.includes(config.BUSINESS_OWNER_EMAIL)) {
-      continue;
+    try {
+      // Skip emails from the business owner (these are approvals)
+      if (email.from.includes(config.BUSINESS_OWNER_EMAIL)) {
+        await addLabel(email.id, 'INTERNAL');
+        continue;
+      }
+
+      // Skip Chattie notification emails
+      if (email.subject.includes('[Chattie]')) {
+        await addLabel(email.id, 'INTERNAL');
+        continue;
+      }
+
+      console.log(`Processing email from ${email.from}: ${email.subject}`);
+
+      // Classify email before processing
+      const classification = await classifyEmail(email.from, email.subject, email.body);
+      console.log(`Email classified as ${classification.classification} (${classification.confidence}): ${classification.reason}`);
+
+      // Label the email with its classification
+      await addLabel(email.id, classification.classification);
+
+      // Only create drafts for CUSTOMER emails
+      if (classification.classification !== 'CUSTOMER') {
+        console.log(`Skipping draft for non-customer email (${classification.classification}) from ${email.from}`);
+        // NOT marking as read - user can still see these as unread in Gmail
+        continue;
+      }
+
+      // Generate draft response
+      const draftContent = await generateEmailDraft(
+        { from: email.from, subject: email.subject, body: email.body },
+        [] // Could add conversation history here
+      );
+
+      // Create draft reply
+      const replySubject = email.subject.startsWith('Re:')
+        ? email.subject
+        : `Re: ${email.subject}`;
+
+      await createDraft(email.from, replySubject, draftContent, email.threadId);
+
+      // Mark as read
+      await markAsRead(email.id);
+
+      console.log(`Created draft reply for email from ${email.from}`);
+    } catch (error) {
+      // Log error but continue processing remaining emails
+      console.error(`Error processing email from ${email.from} (${email.subject}):`, error);
     }
-
-    // Skip Chattie notification emails
-    if (email.subject.includes('[Chattie]')) {
-      continue;
-    }
-
-    console.log(`Processing email from ${email.from}: ${email.subject}`);
-
-    // Generate draft response
-    const draftContent = await generateEmailDraft(
-      { from: email.from, subject: email.subject, body: email.body },
-      [] // Could add conversation history here
-    );
-
-    // Create draft reply
-    const replySubject = email.subject.startsWith('Re:')
-      ? email.subject
-      : `Re: ${email.subject}`;
-
-    await createDraft(email.from, replySubject, draftContent, email.threadId);
-
-    // Mark original as read
-    await markAsRead(email.id);
-
-    console.log(`Created draft reply for email from ${email.from}`);
   }
 }
 
