@@ -121,6 +121,9 @@ model BusinessConfig {
   greetingMessage     String?   // Optional custom first message
   closingMessage      String?   // Message when all info is collected
 
+  // Email footer (signature)
+  emailFooter         String?   // e.g., "Met vriendelijke groet,\n\nMichael Smith\nKroon Hoveniers\n06-12345678"
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

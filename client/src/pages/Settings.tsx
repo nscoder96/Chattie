@@ -15,6 +15,7 @@ interface Config {
   responseMode: string;
   greetingMessage: string | null;
   closingMessage: string | null;
+  emailFooter: string | null;
   scrapedContent: string | null;
   scrapedAt: string | null;
 }
@@ -106,6 +107,7 @@ export default function Settings() {
         responseMode: config.responseMode,
         greetingMessage: config.greetingMessage,
         closingMessage: config.closingMessage,
+        emailFooter: config.emailFooter,
       });
       setMessage({ type: 'success', text: 'Instellingen opgeslagen!' });
     } catch (err) {
@@ -432,7 +434,7 @@ export default function Settings() {
           <h2 className="text-lg font-semibold text-gray-900">Berichten</h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Begroeting</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Begroeting (WhatsApp)</label>
             <textarea
               value={config.greetingMessage || ''}
               onChange={e => updateField('greetingMessage', e.target.value || null)}
@@ -443,13 +445,29 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Afsluiting</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Afsluiting (WhatsApp)</label>
             <textarea
               value={config.closingMessage || ''}
               onChange={e => updateField('closingMessage', e.target.value || null)}
               rows={2}
               placeholder="Bericht wanneer alle info verzameld is..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">E-mail handtekening</label>
+            <p className="text-xs text-gray-400 mb-2">Deze tekst wordt onder elke e-mail geplaatst.</p>
+            <textarea
+              value={config.emailFooter || ''}
+              onChange={e => updateField('emailFooter', e.target.value || null)}
+              rows={4}
+              placeholder={`Met vriendelijke groet,
+
+${config.ownerName || 'Naam'}
+${config.businessName}
+${config.ownerPhone || 'Telefoonnummer'}`}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
             />
           </div>
         </div>

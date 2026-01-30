@@ -33,6 +33,7 @@ const updateConfigSchema = z.object({
   responseMode: z.enum(['approval', 'auto']).optional(),
   greetingMessage: z.string().optional().nullable(),
   closingMessage: z.string().optional().nullable(),
+  emailFooter: z.string().optional().nullable(),
 });
 
 adminRouter.put('/config', async (req: Request, res: Response) => {

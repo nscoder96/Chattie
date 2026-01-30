@@ -355,7 +355,13 @@ ${businessConfig.language === 'nl' ? '- Schrijf in het Nederlands (je/jij)' : '-
 - Reageer ALLEEN op e-mails gerelateerd aan het bedrijf en diensten
 - Niet-relevante e-mails: stel beleefd antwoord op dat dit adres voor zakelijke aanvragen is
 - Geef ALLEEN de e-mail tekst terug, geen subject line of andere metadata
-- Onderteken met "Met vriendelijke groet,\n${businessConfig.ownerName || businessConfig.businessName}"`,
+
+## Afsluiting (VERPLICHT aan het einde van elke email)
+Sluit ALTIJD af met EXACT deze tekst:
+
+${businessConfig.emailFooter || `Met vriendelijke groet,
+
+${businessConfig.ownerName || businessConfig.businessName}`}`,
     },
   ];
 
