@@ -32,7 +32,28 @@ function buildSystemPrompt(businessConfig: BusinessConfig): string {
 
   // Build business context from scraped data
   let businessContext = '';
-  if (scrapedData) {
+  if (scrapedData?.categorized) {
+    const cat = scrapedData.categorized;
+    const dienstenList = cat.diensten?.map((d: { naam: string; beschrijving: string }) => `- ${d.naam}: ${d.beschrijving}`).join('\n') || '';
+    const faqList = cat.veelgestelde_vragen?.map((q: { vraag: string; antwoord: string }) => `V: ${q.vraag}\nA: ${q.antwoord}`).join('\n\n') || '';
+
+    businessContext = `
+## Over het bedrijf
+Naam: ${businessConfig.businessName}
+${cat.over_het_bedrijf || ''}
+
+## Diensten
+${dienstenList}
+
+${cat.werkgebied?.length > 0 ? `## Werkgebied\n${cat.werkgebied.join(', ')}` : ''}
+
+${cat.prijsindicaties ? `## Prijsindicaties\n${cat.prijsindicaties}` : ''}
+
+${faqList ? `## Veelgestelde vragen\n${faqList}` : ''}
+
+${cat.projecten?.length > 0 ? `## Referenties/Projecten\n${cat.projecten.map((p: string) => `- ${p}`).join('\n')}` : ''}
+`;
+  } else if (scrapedData) {
     businessContext = `
 ## Over het bedrijf
 Naam: ${businessConfig.businessName}
@@ -65,26 +86,43 @@ ${businessConfig.businessDescription ? `Beschrijving: ${businessConfig.businessD
     ? `\n## Extra instructies van de bedrijfseigenaar\n${businessConfig.customInstructions}\n`
     : '';
 
-  return `Je bent een vriendelijke en professionele assistent voor ${businessConfig.businessName}. Je helpt potentiële klanten die contact opnemen via WhatsApp of e-mail.
+  return `Je bent de assistent van ${businessConfig.businessName}. Je helpt potentiële klanten via WhatsApp.
+
+BELANGRIJK: Je bent GEEN chatbot, GEEN AI, GEEN bot. Je bent simpelweg "de assistent van ${businessConfig.businessName}". Noem dit NOOIT anders.
 
 ${businessContext}
 
-## Jouw doel
-Je moet de volgende informatie verzamelen voordat een offerte gemaakt kan worden:
-${fieldsToCollect}
-
-## Instructies
+## Gespreksstijl
+- Praat als een echt mens, niet als een robot
+- Gebruik NIET elke keer de naam van de klant - dat is onnatuurlijk
+- Houd berichten kort en conversationeel
+- Reageer op wat de klant zegt, stel geen lijstjes met vragen
+- Wees geïnteresseerd in hun project, niet aan het "afvinken" van een formulier
 - ${tone}
-- Vraag de informatie stap voor stap, niet alles tegelijk. Stel maximaal 1-2 vragen per bericht.
-- Als de klant al informatie geeft, bevestig dit en vraag naar het VOLGENDE ontbrekende veld.
-- Als ze foto's sturen, bedank ze en ga door met de volgende vraag.
-- Rond het gesprek PAS af als ALLE bovengenoemde velden zijn verzameld. Check altijd of er nog ontbrekende velden zijn.
-- Beantwoord eenvoudige vragen over het bedrijf, maar leid het gesprek terug naar het verzamelen van de benodigde informatie.
-- Geef NOOIT aan dat je "alle informatie hebt" als er nog velden ontbreken.
 ${businessConfig.language === 'nl' ? '- Schrijf in het Nederlands' : '- Write in English'}
 ${customInstructions}
-${businessConfig.greetingMessage ? `\n## Eerste bericht\nAls dit het eerste bericht is van een nieuwe klant, begin dan met: "${businessConfig.greetingMessage}"\n` : ''}
-${businessConfig.closingMessage ? `\n## Afsluiting\nAls alle informatie verzameld is, sluit af met: "${businessConfig.closingMessage}"\n` : ''}
+
+## Volgorde van informatie verzamelen
+Verzamel informatie in DEZE VOLGORDE (één onderwerp per bericht):
+
+1. **Wensen/idee** - Wat willen ze met hun tuin? Vraag naar hun plannen, dromen, wat ze voor ogen hebben
+2. **Adres** - Waar is de tuin? (We moeten weten of het in ons werkgebied valt)
+3. **Foto's** - Vraag of ze foto's kunnen sturen van de huidige situatie
+4. **E-mail** - Als laatste: vraag hun e-mailadres zodat we een offerte kunnen sturen
+
+## Instructies
+- Vraag maximaal 1 ding per bericht
+- Als de klant al informatie geeft, reageer daar natuurlijk op en vraag dan pas naar het volgende
+- Als ze foto's sturen, reageer erop ("Mooie tuin!" of "Ik zie wat je bedoelt") en ga door
+- Rond het gesprek PAS af als alle informatie is verzameld
+- Beantwoord vragen over het bedrijf, maar leid terug naar het gesprek
+
+## Beperkingen
+- Praat ALLEEN over ${businessConfig.businessName} en tuinwerkzaamheden
+- Off-topic? Zeg vriendelijk: "Daar kan ik je helaas niet mee helpen, maar vertel - wat kan ik voor je tuin betekenen?"
+- Noem NOOIT dat je een bot, AI, chatbot of automatisch systeem bent
+${businessConfig.greetingMessage ? `\n## Eerste bericht\nBij een nieuwe klant, begin met: "${businessConfig.greetingMessage}"\n` : ''}
+${businessConfig.closingMessage ? `\n## Afsluiting\nAls alle info verzameld is: "${businessConfig.closingMessage}"\n` : ''}
 
 ## Formaat
 Reageer altijd in JSON-formaat:
@@ -111,14 +149,14 @@ export async function generateResponse(context: ConversationContext, customerMes
     { role: 'system', content: systemPrompt },
   ];
 
-  // Add context about what we already know
+  // Add context about what we already know (only flags, no PII sent to OpenAI)
   if (context.contactName || context.contactEmail || context.gardenSize || context.hasPhotos) {
     let contextMessage = 'Reeds verzamelde informatie over deze klant:\n';
-    if (context.contactName) contextMessage += `- Naam: ${context.contactName}\n`;
-    if (context.contactEmail) contextMessage += `- E-mail: ${context.contactEmail}\n`;
-    if (context.contactPhone) contextMessage += `- Telefoon: ${context.contactPhone}\n`;
-    if (context.gardenSize) contextMessage += `- Tuinafmetingen: ${context.gardenSize}\n`;
-    if (context.hasPhotos) contextMessage += `- Foto's: Ontvangen\n`;
+    if (context.contactName) contextMessage += `- Naam: ✓ verzameld\n`;
+    if (context.contactEmail) contextMessage += `- E-mail: ✓ verzameld\n`;
+    if (context.contactPhone) contextMessage += `- Telefoon: ✓ verzameld\n`;
+    if (context.gardenSize) contextMessage += `- Tuinafmetingen: ✓ verzameld\n`;
+    if (context.hasPhotos) contextMessage += `- Foto's: ✓ ontvangen\n`;
     messages.push({ role: 'system', content: contextMessage });
   }
 
@@ -158,27 +196,136 @@ export async function generateResponse(context: ConversationContext, customerMes
   }
 }
 
+export interface EmailClassification {
+  classification: 'CUSTOMER' | 'SUPPLIER' | 'SPAM' | 'INTERNAL' | 'OTHER';
+  confidence: number;
+  reason: string;
+}
+
+export async function classifyEmail(
+  from: string,
+  subject: string,
+  body: string
+): Promise<EmailClassification> {
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4-turbo-preview',
+    messages: [
+      {
+        role: 'system',
+        content: `Classificeer de volgende e-mail in één van deze categorieën:
+- CUSTOMER: Een (potentiële) klant die vraagt over diensten, offertes, of afspraken
+- SUPPLIER: Een leverancier, zakelijke partner, of B2B communicatie
+- SPAM: Reclame, phishing, ongewenste berichten
+- INTERNAL: Interne communicatie, systeem notificaties
+- OTHER: Alles wat niet in bovenstaande categorieën past
+
+Geef je antwoord als JSON met: classification, confidence (0-1), reason (kort).`,
+      },
+      {
+        role: 'user',
+        content: `Van: ${from}\nOnderwerp: ${subject}\n\n${body.slice(0, 500)}`,
+      },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.1,
+    max_tokens: 150,
+  });
+
+  const responseText = completion.choices[0]?.message?.content;
+  if (!responseText) {
+    return { classification: 'OTHER', confidence: 0, reason: 'No response from AI' };
+  }
+
+  try {
+    return JSON.parse(responseText) as EmailClassification;
+  } catch {
+    return { classification: 'OTHER', confidence: 0, reason: 'Failed to parse classification' };
+  }
+}
+
 export async function generateEmailDraft(
   originalEmail: { from: string; subject: string; body: string },
   conversationHistory: Array<{ role: 'customer' | 'assistant'; content: string }>
 ): Promise<string> {
   const businessConfig = await getBusinessConfig();
 
+  // Build business knowledge context
+  let businessKnowledge = '';
+  if (businessConfig.scrapedContent) {
+    try {
+      const scraped = JSON.parse(businessConfig.scrapedContent);
+      if (scraped.categorized) {
+        const cat = scraped.categorized;
+        const diensten = cat.diensten?.map((d: { naam: string; beschrijving: string }) => `- ${d.naam}: ${d.beschrijving}`).join('\n') || '';
+        businessKnowledge = `
+## Kennis over het bedrijf
+${cat.over_het_bedrijf || ''}
+
+## Diensten
+${diensten}
+
+${cat.werkgebied?.length > 0 ? `## Werkgebied\n${cat.werkgebied.join(', ')}` : ''}
+${cat.prijsindicaties ? `## Prijsindicaties\n${cat.prijsindicaties}` : ''}
+`;
+      }
+    } catch { /* ignore */ }
+  }
+
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     {
       role: 'system',
-      content: `Je bent een assistent voor ${businessConfig.businessName} die helpt met het beantwoorden van e-mails.
+      content: `Je bent de e-mailassistent van ${businessConfig.businessName}. Je beantwoordt inkomende klant-emails.
 
-${businessConfig.businessDescription ? `Over het bedrijf: ${businessConfig.businessDescription}` : ''}
+${businessKnowledge}
 
-Schrijf een professionele maar vriendelijke e-mail reactie.
-${businessConfig.language === 'nl' ? '- Schrijf in het Nederlands (je/jij tenzij anders aangegeven)' : '- Write in English'}
+${businessConfig.customInstructions ? `## Extra instructies van de eigenaar\n${businessConfig.customInstructions}\n` : ''}
+
+## Jouw werkwijze
+
+### Stap 1: Analyseer de inkomende e-mail
+- Waar gaat het over? Welke dienst wordt gevraagd?
+- Wat zijn de belangrijke punten om op te reageren?
+- Wat kunnen we achterwege laten? (niet op elk detail reageren)
+
+### Stap 2: Schrijf een reactie
+- Bedank voor het bericht
+- Reageer kort en inhoudelijk op de kern van de vraag
+- Gebruik je kennis over het bedrijf om relevant te antwoorden
+- Houd het beknopt en persoonlijk
+
+### Stap 3: Check ontbrekende gegevens
+De volgende gegevens zijn nodig om een goed telefoongesprek voor te bereiden:
+1. **Telefoonnummer (06-nummer)** — dit is het BELANGRIJKSTE, want de vervolgstap is altijd een telefoongesprek
+2. **Afmetingen van de tuin** — vraag om de lengte en breedte (in meters), zodat we de vierkante meters kunnen inschatten
+3. **Foto's van de tuin** — en specifiek ook van bijzondere plekjes in de tuin
+4. **Adres** — waar is de tuin?
+
+Het e-mailadres hebben we al (want ze mailen ons).
+
+### Stap 4: Ontbrekende gegevens opvragen
+Na je inhoudelijke reactie, voeg je ÉÉN KEER een duidelijk blok toe met ontbrekende gegevens.
+NIET in de lopende tekst EN apart — alleen als apart blok onderaan.
+
+Check elk van deze vier punten en vraag ALLES wat niet expliciet in de email staat:
+1. Telefoonnummer (06) — zodat we een belafspraak kunnen inplannen
+2. Afmetingen van de tuin (lengte x breedte in meters) — zodat we de vierkante meters kunnen inschatten
+3. Foto's van de tuin en bijzondere plekjes
+4. Adres van de tuin
+
+Formuleer het als: "Om je zo goed mogelijk te kunnen helpen, ontvang ik graag nog:" gevolgd door een korte opsomming.
+Laat ALLEEN gegevens weg die de klant AL EXPLICIET in de email heeft gegeven.
+
+### Stap 5: Vervolgstap
+De vervolgstap is ALTIJD een telefoongesprek. Vermeld dat je na ontvangst van de gegevens graag telefonisch contact opneemt om de wensen te bespreken.
+
+## Regels
+${businessConfig.language === 'nl' ? '- Schrijf in het Nederlands (je/jij)' : '- Write in English'}
+- Professioneel maar vriendelijk en persoonlijk
 - Korte, duidelijke zinnen
-- Vraag om de benodigde informatie als die ontbreekt
-
-${businessConfig.customInstructions ? `Extra instructies: ${businessConfig.customInstructions}` : ''}
-
-Geef ALLEEN de e-mail tekst terug, geen subject line of andere metadata.`,
+- Reageer ALLEEN op e-mails gerelateerd aan het bedrijf en diensten
+- Niet-relevante e-mails: stel beleefd antwoord op dat dit adres voor zakelijke aanvragen is
+- Geef ALLEEN de e-mail tekst terug, geen subject line of andere metadata
+- Onderteken met "Met vriendelijke groet,\n${businessConfig.ownerName || businessConfig.businessName}"`,
     },
   ];
 
@@ -198,7 +345,7 @@ Onderwerp: ${originalEmail.subject}
 
 ${originalEmail.body}
 
-Schrijf een passende reactie.`,
+Analyseer deze email en schrijf een passende reactie volgens de werkwijze hierboven.`,
   });
 
   const completion = await openai.chat.completions.create({
