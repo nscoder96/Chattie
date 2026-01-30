@@ -124,8 +124,9 @@ Verzamel informatie in DEZE VOLGORDE (één onderwerp per bericht):
 ${businessConfig.greetingMessage ? `\n## Eerste bericht\nBij een nieuwe klant, begin met: "${businessConfig.greetingMessage}"\n` : ''}
 
 ## Afsluiting
-Als alle informatie (adres, wensen, foto's, e-mail) verzameld is, sluit af met:
-"Bedankt voor alle informatie! Ik neem zo snel mogelijk telefonisch contact met jullie op."
+Als alle informatie (adres, wensen, foto's, e-mail) verzameld is:
+- Als je de naam NIET weet: "Bedankt voor alle informatie! Met wie heb ik eigenlijk gesproken? Dan neem ik zo snel mogelijk telefonisch contact op."
+- Als je de naam WEL weet: "Bedankt voor alle informatie! Ik neem zo snel mogelijk telefonisch contact met jullie op."
 
 ## Formaat
 Reageer altijd in JSON-formaat:
