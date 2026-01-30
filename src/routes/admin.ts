@@ -430,10 +430,15 @@ adminRouter.post('/conversations/:id/resume', async (req: Request, res: Response
 });
 
 // Reset a contact's conversation (delete all messages, start fresh)
-adminRouter.post('/contacts/:phone/reset', async (req: Request, res: Response) => {
+adminRouter.post('/reset-contact', async (req: Request, res: Response) => {
   try {
+    let phone = req.body.phone;
+    if (!phone) {
+      res.status(400).json({ error: 'phone is required' });
+      return;
+    }
+
     // Normalize phone number (add + if missing)
-    let phone = req.params.phone;
     if (!phone.startsWith('+')) {
       phone = '+31' + phone.replace(/^0/, '');
     }
